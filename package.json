@@ -1,0 +1,67 @@
+{
+  "name": "js-test-framework",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "clean": "rimraf dist/",
+    "check:lint:js": "eslint src/ test/ --ext .js",
+    "check:lint": "npm run check:lint:js",
+    "check": "npm run check:lint",
+    "test": "mocha",
+    "mutation-test:compile": "babel test/ --out-dir dist/test/ --copy-files",
+    "mutation-test:run": "stryker run stryker.conf.js",
+    "mutation-test": "npm run mutation-test:compile && npm run mutation-test:run",
+    "cover": "nyc npm test",
+    "verify": "npm run check && npm run cover",
+    "compile:javascript": "babel src/ --out-dir dist/src/ --copy-files",
+    "compile": "npm run compile:javascript",
+    "build": "npm run clean && npm run verify && npm run compile"
+  },
+  "author": "Brian Mearns",
+  "license": "MIT",
+  "babel": {
+    "presets": [
+      "es2015"
+    ],
+    "plugins": [
+      "transform-object-assign"
+    ]
+  },
+  "nyc": {
+    "reporter": [
+      "text",
+      "lcov"
+    ],
+    "require": [
+      "babel-core/register"
+    ],
+    "include": [
+      "src/**"
+    ],
+    "all": true,
+    "check-coverage": true,
+    "statements": 90,
+    "branches": 90,
+    "functions": 90,
+    "lines": 90
+  },
+  "devDependencies": {
+    "babel-cli": "6.23.0",
+    "babel-core": "6.23.1",
+    "babel-eslint": "7.1.1",
+    "babel-plugin-transform-object-assign": "6.22.0",
+    "babel-plugin-transform-object-rest-spread": "6.23.0",
+    "babel-preset-es2015": "6.22.0",
+    "chai": "3.5.0",
+    "eslint": "3.17.1",
+    "mkdirp": "0.5.1",
+    "mocha": "3.2.0",
+    "nyc": "10.1.2",
+    "rimraf": "2.6.1",
+    "stryker": "0.5.9",
+    "stryker-api": "0.4.2",
+    "stryker-html-reporter": "0.3.0",
+    "stryker-mocha-runner": "0.2.0"
+  }
+}
