@@ -9,21 +9,39 @@ function TestCase(description, subject, spec) {
         },
 
         given: (setup) => {
-            givens.push({setup});
+            givens.push({setup: Promise.resolve(setup)});
         }
     };
+
+    // A promise to define the test case by running the spec.
     const promiseToDefine = Promise.method(spec)(api, subject);
 
-    const runSetup = (existingVariables, {setup}) => {
-        return Object.assign({}, existingVariables, setup);
+    // A promise to run a single given, merging it in with the existing variables.
+    const promiseToRunGiven = (promiseOfExistingVariables, {setup}) => {
+        return promiseOfExistingVariables
+          .then((existingVariables) => {
+              return setup.then((newVariables) => Object.assign({}, existingVariables, newVariables));
+          });
     };
-    const thenRunner = (testVariables) => {
+
+    // Return a function that will run a given "then" with the given
+    // test variables.
+    const createTestRunner = (testVariables) => {
         return ({inspector}) => inspector(testVariables);
     };
 
+    const runSetup = () => {
+        return givens.reduce(promiseToRunGiven, Promise.resolve({}));
+    };
+
+    const runThens = (testVariables) => {
+        return Promise.mapSeries(thens, createTestRunner(testVariables));
+    };
+
     this.run = () => {
-        const testVariables = givens.reduce(runSetup, {});
-        return promiseToDefine.then(() => Promise.mapSeries(thens, thenRunner(testVariables)))
+        return promiseToDefine
+            .then(runSetup)
+            .then(runThens)
             .then(() => ({passed: true}))
             .catch((error) => ({passed: false, error}));
     };
