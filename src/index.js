@@ -1,4 +1,5 @@
 import Promise from 'bluebird';
+import isFunction from 'lodash.isfunction';
 
 function TestCase(description, subject, spec) {
     const thens = [];
@@ -9,7 +10,15 @@ function TestCase(description, subject, spec) {
         },
 
         given: (setup) => {
-            givens.push({setup: Promise.resolve(setup)});
+            const given = {};
+            if (isFunction(setup)) {
+                given.setup = Promise.method(setup);
+            }
+            else {
+                const resolvedSetup = Promise.resolve(setup);
+                given.setup = () => resolvedSetup;
+            }
+            givens.push(given);
         }
     };
 
@@ -20,7 +29,8 @@ function TestCase(description, subject, spec) {
     const promiseToRunGiven = (promiseOfExistingVariables, {setup}) => {
         return promiseOfExistingVariables
           .then((existingVariables) => {
-              return setup.then((newVariables) => Object.assign({}, existingVariables, newVariables));
+              return setup(existingVariables)
+                  .then((newVariables) => Object.assign({}, existingVariables, newVariables));
           });
     };
 

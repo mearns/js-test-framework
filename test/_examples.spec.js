@@ -109,4 +109,36 @@ describe('Examples', () => {
                 expect(receivedTestVariables).to.deep.equal({foo: 'bar'});
             });
     });
+
+    it('using "given" to define test variables with function that returns an object', () => {
+        let receivedTestVariables;
+        return testFramework.regarding('something', (regardingSomething) => {
+            regardingSomething.itShould('do something', ({given, then}) => {
+                given(() => ({foo: 'bar'}));
+                then((testVariables) => {
+                    receivedTestVariables = testVariables;
+                });
+            });
+        })
+            .run()
+            .then(() => {
+                expect(receivedTestVariables).to.deep.equal({foo: 'bar'});
+            });
+    });
+
+    it('using "given" to define test variables with function that returns a Promise of an object', () => {
+        let receivedTestVariables;
+        return testFramework.regarding('something', (regardingSomething) => {
+            regardingSomething.itShould('do something', ({given, then}) => {
+                given(() => Promise.resolve({foo: 'bar'}));
+                then((testVariables) => {
+                    receivedTestVariables = testVariables;
+                });
+            });
+        })
+            .run()
+            .then(() => {
+                expect(receivedTestVariables).to.deep.equal({foo: 'bar'});
+            });
+    });
 });
