@@ -1,13 +1,13 @@
 import Promise from 'bluebird';
 
-function TestCase(description, spec) {
+function TestCase(description, subject, spec) {
     const thens = [];
     const api = {
         then: (inspector) => {
             thens.push({inspector: Promise.method(inspector)});
         }
     };
-    const promiseToDefine = Promise.method(spec)(api);
+    const promiseToDefine = Promise.method(spec)(api, subject);
 
     const runThen = ({inspector}) => inspector();
 
@@ -23,7 +23,7 @@ function TestContext(subject, spec) {
     const testCases = [];
     const api = {
         itShould: (description, testSpec) => {
-            testCases.push(new TestCase(description, testSpec));
+            testCases.push(new TestCase(description, subject, testSpec));
         }
     };
     const promiseToDefine = Promise.method(spec)(api);

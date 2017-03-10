@@ -65,4 +65,17 @@ describe('Examples', () => {
             });
     });
 
+    it('using the subject in a test spec', () => {
+        let receivedSubjet;
+        return testFramework.regarding('something', (regardingSomething) => {
+            regardingSomething.itShould('do something', ({then}, subject) => {
+                receivedSubjet = subject;
+            });
+        })
+            .run()
+            .then(() => {
+                expect(receivedSubjet).to.deep.equal('something');
+            });
+    });
+
 });
