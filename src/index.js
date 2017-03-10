@@ -2,17 +2,28 @@ import Promise from 'bluebird';
 
 function TestCase(description, subject, spec) {
     const thens = [];
+    const givens = [];
     const api = {
         then: (inspector) => {
             thens.push({inspector: Promise.method(inspector)});
+        },
+
+        given: (setup) => {
+            givens.push({setup});
         }
     };
     const promiseToDefine = Promise.method(spec)(api, subject);
 
-    const runThen = ({inspector}) => inspector();
+    const runSetup = (existingVariables, {setup}) => {
+        return Object.assign({}, existingVariables, setup);
+    };
+    const thenRunner = (testVariables) => {
+        return ({inspector}) => inspector(testVariables);
+    };
 
     this.run = () => {
-        return promiseToDefine.then(() => Promise.mapSeries(thens, runThen))
+        const testVariables = givens.reduce(runSetup, {});
+        return promiseToDefine.then(() => Promise.mapSeries(thens, thenRunner(testVariables)))
             .then(() => ({passed: true}))
             .catch((error) => ({passed: false, error}));
     };
