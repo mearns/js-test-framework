@@ -3,30 +3,51 @@
 ```javascript
 
 import {regarding} from 'js-test-framework';
-import {assert} from 'some-assertion-library';
+import {expect} from 'chai';    // or any other assertion library, or nothing at all.
 
 import * as myModule from './myModule';
 
 regarding(myModule, (regardingMyModule) => {
     regardingMyModule.andSpecifically(regardingMyModule.subject.frob, (regardingFrobFunction) => {
-        regardingFrobFunction.it_should('return X when given Y', ({given, when, then}, frob) => {
-            given({input: X, expectedOutput: Y});
+        regardingFrobFunction.testThat(({oneMay, when, given}, frob) => {
+            oneMay((it, {expectedOutput}) => {
+                expect(it.value).to.equal(expectedOutput);
+            })
             when(({input}) => frob(input));
-            then((result, {expectedOutput}) => {
-                assert(result.value === expectedOutput);
-            });
+            given({input: X, expectedOutput: Y});
         });
 
-        regardingFrobFunction.it_should('throw an Error when given Z', ({given, when, then}, frob) => {
-            given({input: Z});
-            when(({input}) => frob(input));
-            then((result) => {
-                assert(result.threw instanceof Error);
+        regardingFrobFunction.testThat(({oneMay, when, given}, frob) => {
+            oneMay((it) => {
+                expect(result.threw).to.be.an.instanceOf(Error);
             });
+            when(({input}) => frob(input));
+            given({input: Z});
         });
     });
 });
 ```
+
+The order in which the functions of the test spec (passed to `testThat`) is recommended
+to be reversed from typical style. The typical style is "given...when...then", also known as
+"arrange...act...assert". This is a natural way to write code: you setup your environment,
+then perform some action, then make assertions about what happened. But it's not really
+a natural way to think about tests.
+
+Instead, we recommend writing your tests in reverse order, which is why we had to change
+some of the names ;-). In this framework, tests should be written as
+"OneMay \[expect that\] ..., When ..., Given \[that\] ...". This isn't simply the order in
+which the code should occur in the file, it's the recommended order for actually writing
+(and thinking about) your tests: decide what state it is that you actually want to assert on,
+then figure out what actions you need to take to bring that state about, and lastly determine
+what needs to happen to setup your actions (which is largely incidental to the test).
+
+You aren't obligated to write your code in this order: all your "givens" will be run
+first, then your "when", and lastly your "oneMay"'s, regardless of what order they
+appear in the code. This is simply recommended as a best practice. Also note that the
+order in which your "givens" occur is the same order in which they will be applied to
+setup the test, and likewise the order of your "oneMay"'s is the order in which they
+will be applied to assert on your test.
 
 ### API Documentation
 
@@ -107,14 +128,14 @@ pure steps can be run once and reused many times, and they can be run in paralle
 **must make sure that the functions are really pure** or you will run into any number of race
 conditions and your tests will be generally meaningless and unpredicatable.
 
-### `ContextAPI::it_should(description, testFunc)`
+### `ContextAPI::testThat(description, testFunc)`
 
 This is how you actually define a test case within a context.
 
 The `testFunc` is a function that will be invoked _to define_ the test case. Similar to
 the `spec` function passed to `regarding`, this is invoked unconditionally during test
 definition (though not necessarily synchronously or immediately). _If and when_ the test
-case is actually evaluated, any functions passed to `given`, `when`, or `then` will be invoked,
+case is actually evaluated, any functions passed to `given`, `when`, or `oneMay` will be invoked,
 as described below.
 
 #### `testFunc(testAPI, subject)`
@@ -136,7 +157,7 @@ apply to every test case defined inside it, _or_ inside a sub-context.
 The use of this function looks like:
 
 ```javascript
-regardingMyModule.tag('foo', 'bar').it_should(...);
+regardingMyModule.tag('foo', 'bar').testThat(...);
 ```
 
 Specifically, the `tag` function does not alter the state of the `ContextAPI` on which it
@@ -258,16 +279,19 @@ under test here.
 
 Pass a function that will exercise your unit under test or perform whatever other actions you want to test.
 Any value returned other than a thennable will be captured as the result value, which can subsequently be
-inspected and asserted on in calls to `then`. If the provided function returns a thennable, then whatever
+inspected and asserted on in calls to `oneMay`. If the provided function returns a thennable, then whatever
 value it fulfills with will be used as the result value.
 
 If your unit under test is expected to return a thennable and you want to actually inspect the thennable, as opposed
 to the settled state of the thennable, you'll need to wrap it inside an Object before returning it from the
 provided function.
 
-Note that if the provided function fails, the test is _not automatically failed_. A result object is created that
-encapsulates the results of your function, whether it failed or not. The result object is the one that is passed
-to your `then` inspectors. This provides an easy way to test failure cases. Similarly, if the thennable returned
+Note that if the provided function fails, or a returned thennable rejects, the test is _not automatically failed_.
+A result object is created that encapsulates the results of your function, whether it failed or not. This is
+the primary conceptual difference between `given` and `when` (functionally they have different signatures as well).
+
+The result object is the one that is passed
+to your `oneMay` inspectors. This provides an easy way to test failure cases. Similarly, if the thennable returned
 by your `when` function rejects, the test is not automatically failed, but the information about the rejection is
 captured in the result object for inspection.
 
@@ -275,11 +299,11 @@ You can only call `when` _once_ per test case. Calling it more than once will re
 
 Like `TestAPI::given`, this function has an attached `pure` method that can be used to mark the step as pure.
 
-### `TestAPI::then(inspector)`
+### `TestAPI::oneMay(inspector)`
 
 ```javascript
-then((result, Object) => anything);
-then((result, Object) => Promise<anything>);
+oneMay((result, Object) => anything);
+oneMay((result, Object) => Promise<anything>);
 ```
 
 This is where you inspect the results of your `when` function and decide if your test passed or failed.
@@ -295,8 +319,8 @@ the second argument will be an empty object.
 
 The fulfillment value of a returned thenable doesn't matter and will be ignored.
 
-You can have as many `then`'s in you test as you like, they will be run in sequence (unless marked as _pure_), and if
+You can have as many `oneMay`'s in you test as you like, they will be run in sequence (unless marked as _pure_), and if
 any one results in a failure as described above, then the entire test case fails. It is generally preferable to have
-a small number of `then`'s in each test case, and use multiple test cases to test multiple things.
+a small number of `oneMay`'s in each test case, and use multiple test cases to test multiple things.
 
 Like `given` and `when`, this function has an attached `pure` method that is used to mark it as a pure step.

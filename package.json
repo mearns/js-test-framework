@@ -59,6 +59,8 @@
     "mocha": "3.2.0",
     "nyc": "10.1.2",
     "rimraf": "2.6.1",
+    "sinon": "1.17.7",
+    "sinon-chai": "2.8.0",
     "stryker": "0.5.9",
     "stryker-api": "0.4.2",
     "stryker-html-reporter": "0.3.0",
