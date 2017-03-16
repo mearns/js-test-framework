@@ -333,5 +333,48 @@ describe('Examples', () => {
             });
     });
 
+    it('using multiple "givens" and "takens"', () => {
+        const cleaner1Stub = sinon.spy();
+        const cleaner2Stub = sinon.spy();
+        const inspectorStub = sinon.spy();
+        return testFramework.regarding('something', (regardingSomething) => {
+            regardingSomething.testThat('do something', ({given, oneMay}) => {
+                given(() => Promise.resolve({foo: 'bar'}))
+                    .taken(cleaner1Stub);
+                given(() => Promise.resolve({baz: 'thunder'}))
+                    .taken(cleaner2Stub);
+                oneMay(inspectorStub);
+            });
+        })
+            .run()
+            .then((testResults) => {
+                expect(testResults.passed).to.be.true;
+                expect(cleaner1Stub).to.have.been.calledOnce;
+                expect(cleaner2Stub).to.have.been.calledOnce;
+                expect(cleaner1Stub).to.have.been.calledAfter(inspectorStub);
+                expect(cleaner2Stub).to.have.been.calledAfter(inspectorStub);
+                expect(cleaner1Stub).to.have.been.calledWith(sinon.match({foo: 'bar'}));
+                expect(cleaner2Stub).to.have.been.calledWith(sinon.match({foo: 'bar', baz: 'thunder'}));
+            });
+    });
+
+    it('fail if an error occurs in a "taken" cleaner', () => {
+        return testFramework.regarding('something', (regardingSomething) => {
+            regardingSomething.testThat('do something', ({given}) => {
+                given(() => Promise.resolve({foo: 'bar'}))
+                    .taken(() => {
+                        throw new Error('test-error');
+                    });
+            });
+        })
+            .run()
+            .then((testResults) => {
+                expect(testResults.passed).to.be.false;
+                expect(testResults.error).to.be.an.instanceOf(Error);
+            });
+    });
+
+    it('should do something if an error or rejection occurs in an early cleaner');
+
     it('should fail at somepoint before run if an error or rejection occurs during definition');
 });

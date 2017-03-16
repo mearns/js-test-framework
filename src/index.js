@@ -1,5 +1,70 @@
 import Promise from 'bluebird';
 import isFunction from 'lodash.isfunction';
+import {chainPromises} from './services/promise-utils';
+
+function Taken(cleaner) {
+    this.ran = false;
+    this.cleaner = cleaner ? Promise.method(cleaner) : null;
+}
+Taken.prototype.run = function (testVariables) {
+    this.ran = true;
+    if (this.cleaner) {
+        return this.cleaner(testVariables)
+            .then(() => {
+                this.succeeded = true;
+            })
+            .catch((error) => {
+                this.succeeded = false;
+                this.error = error;
+            });
+    }
+    else {
+        return Promise.resolve()
+            .then(() => {
+                this.suceeded = true;
+            });
+    }
+};
+
+function Given(setup) {
+    this.ran = false;
+    this.taken = new Taken();
+    this.chainApi = {};
+
+    if (isFunction(setup)) {
+        this.setup = Promise.method(setup);
+        this.chainApi.taken = (cleaner) => {
+            this.taken = new Taken(cleaner);
+        };
+    }
+    else {
+        const resolvedSetup = Promise.resolve(setup);
+        this.setup = () => resolvedSetup;
+        this.chainApi.taken = () => {
+            throw new Error('The "taken" chain is not available for object setups');
+        };
+    }
+}
+Given.prototype.run = function (existingVariables) {
+    this.ran = true;
+    return this.setup(existingVariables)
+        .then((newVariables) => {
+            this.succeeded = true;
+            this.testVariables = Object.assign({}, existingVariables, newVariables);
+            return this.testVariables;
+        })
+        .catch((error) => {
+            this.succeeded = false;
+            this.error = error;
+            throw error;
+        });
+};
+Given.prototype.cleanup = function () {
+    if (this.succeeded) {
+        return this.taken.run(this.testVariables);
+    }
+    return Promise.resolve();
+};
 
 function TestCase(description, subject, spec) {
     const givens = [];
@@ -7,20 +72,9 @@ function TestCase(description, subject, spec) {
     const thens = [];
     const api = {
         given: (setup) => {
-            const given = {};
-            if (isFunction(setup)) {
-                given.setup = Promise.method(setup);
-            }
-            else {
-                const resolvedSetup = Promise.resolve(setup);
-                given.setup = () => resolvedSetup;
-            }
+            const given = new Given(setup);
             givens.push(given);
-            return {
-                taken: (cleaner) => {
-                    given.cleaner = Promise.method(cleaner);
-                }
-            };
+            return given.chainApi;
         },
 
         oneMay: (inspector) => {
@@ -41,18 +95,6 @@ function TestCase(description, subject, spec) {
     // A promise to define the test case by running the spec.
     const promiseToDefine = Promise.method(spec)(api, subject);
 
-    // A promise to run a single given, merging it in with the existing variables.
-    const promiseToRunGiven = (promiseOfExistingVariables, given) => {
-        return promiseOfExistingVariables
-          .then((existingVariables) => {
-              return given.setup(existingVariables)
-                  .then((newVariables) => {
-                      given.testVariables = Object.assign({}, existingVariables, newVariables);
-                      return given.testVariables;
-                  });
-          });
-    };
-
     // Return a function that will run a given "then" with the given
     // test variables.
     const createTestRunner = (result, testVariables) => {
@@ -62,7 +104,7 @@ function TestCase(description, subject, spec) {
     // Promise to run all givens and fulfill with the object of test-variables, or
     // reject if setup failed.
     const runSetup = () => {
-        return givens.reduce(promiseToRunGiven, Promise.resolve({}))
+        return chainPromises(givens.map((given) => given.run.bind(given)), {})
             .then((testVariables) => {
                 // make sure we don't expose the actual testVariable object from
                 // then last given object.
@@ -119,16 +161,7 @@ function TestCase(description, subject, spec) {
     };
 
     const runCleanup = () => {
-        let promiseToCleanAll = Promise.resolve();
-        for (let i = givens.length - 1; i >= 0; i--) {  // eslint-disable-line no-magic-numbers
-            const given = givens[i];
-            const {cleaner, testVariables} = given;
-            if (cleaner) {
-                // TODO: What do we want to do if a cleaner fails? Continue on, doing our best?
-                promiseToCleanAll = promiseToCleanAll.then(() => cleaner(testVariables));
-            }
-        }
-        return promiseToCleanAll;
+        return chainPromises(givens.map((given) => given.cleanup.bind(given)).reverse());
     };
 
     this.run = () => {
@@ -139,10 +172,16 @@ function TestCase(description, subject, spec) {
                     .then((result) => runInspectors(result, testVariables));
             })
             .then(() => ({passed: true}))
-            .catch((error) => ({passed: false, error}))
+            .catch((error) => {
+                return {passed: false, error};
+            })
             .then((testResult) => {
                 return runCleanup()
-                    .then(() => testResult);
+                    .then(() => testResult)
+                    .catch((error) => {
+                        // XXX: FIXME: rollup results from everything.
+                        return {passed: false, error};
+                    });
             });
     };
 }
