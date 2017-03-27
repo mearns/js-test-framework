@@ -1,30 +1,7 @@
 import Promise from 'bluebird';
 import isFunction from 'lodash.isfunction';
 import {chainPromises} from './services/promise-utils';
-
-function Taken(cleaner) {
-    this.ran = false;
-    this.cleaner = cleaner ? Promise.method(cleaner) : null;
-}
-Taken.prototype.run = function (testVariables) {
-    this.ran = true;
-    if (this.cleaner) {
-        return this.cleaner(testVariables)
-            .then(() => {
-                this.succeeded = true;
-            })
-            .catch((error) => {
-                this.succeeded = false;
-                this.error = error;
-            });
-    }
-    else {
-        return Promise.resolve()
-            .then(() => {
-                this.suceeded = true;
-            });
-    }
-};
+import * as Ho from './services/higher-order-utils';
 
 function Given(setup) {
     this.ran = false;
@@ -66,10 +43,94 @@ Given.prototype.cleanup = function () {
     return Promise.resolve();
 };
 
+
+function Taken(cleaner) {
+    this.ran = false;
+    this.cleaner = cleaner ? Promise.method(cleaner) : null;
+}
+Taken.prototype.run = function (testVariables) {
+    this.ran = true;
+    if (this.cleaner) {
+        return this.cleaner(testVariables)
+            .then(() => {
+                this.succeeded = true;
+            })
+            .catch((error) => {
+                this.succeeded = false;
+                this.error = error;
+            });
+    }
+    else {
+        return Promise.resolve()
+            .then(() => {
+                this.suceeded = true;
+            });
+    }
+};
+
+function When(exercisor) {
+    this._exercisor = exercisor;
+}
+When.prototype._fulfilledPromiseResult = function (value) {
+    return {
+        value,
+        promised: true,
+        succeeded: true,
+        threw: false,
+        rejected: false
+    };
+};
+When.prototype._rejectedPromiseResult = function (error) {
+    return {
+        error,
+        succeeded: false,
+        threw: false,
+        rejected: true
+    };
+};
+When.prototype._successfulSynchronousResult = function (value) {
+    return {
+        value,
+        promised: false,
+        succeeded: true,
+        threw: false,
+        rejected: false
+    };
+};
+When.prototype._synchronousErrorResult = function (error) {
+    return {
+        succeeded: false,
+        threw: true,
+        rejected: false,
+        error
+    };
+};
+When.prototype.run = function (testVariables) {
+    try {
+        const rawValue = this._exercisor(testVariables);
+        // If it returns a Promise...
+        if (rawValue && isFunction(rawValue.then)) {
+            // Then chain onto that promise to wrap the result in a Result object.
+            return Promise.resolve(rawValue)
+                .then(this._fulfilledPromiseResult.bind(this))
+                .catch(this._rejectedPromiseResult.bind(this));
+        }
+        else {
+            // Didn't return a promise, so just wrap the value in a Result object.
+            return Promise.resolve(this._successfulSynchronousResult(rawValue));
+        }
+    }
+    catch (error) {
+        // Error was thrown by exercisor, wrap it in a Result object.
+        return Promise.resolve(this._synchronousErrorResult(error));
+    }
+};
+
 function TestCase(description, subject, spec) {
     const givens = [];
     let when = null;
     const thens = [];
+
     const api = {
         given: (setup) => {
             const given = new Given(setup);
@@ -77,23 +138,20 @@ function TestCase(description, subject, spec) {
             return given.chainApi;
         },
 
-        oneMay: (inspector) => {
-            thens.push({inspector: Promise.method(inspector)});
-        },
-
         when: (exercisor) => {
-            // TODO: Maybe we need a "after" on "when", like the given().taken;
+            // TODO: Maybe we need an "after" on "when", like the given().taken;
             if (when) {
-                throw new Error('Each test case can only have at most one "when" invocation');
+                throw new Error('Each test case can have at most one "when" invocation');
             }
             else {
-                when = {exercisor};
+                when = new When(exercisor);
             }
+        },
+
+        oneMay: (inspector) => {
+            thens.push({inspector: Promise.method(inspector)});
         }
     };
-
-    // A promise to define the test case by running the spec.
-    const promiseToDefine = Promise.method(spec)(api, subject);
 
     // Return a function that will run a given "then" with the given
     // test variables.
@@ -112,44 +170,11 @@ function TestCase(description, subject, spec) {
             });
     };
 
+    // Promise to run our `when` exercisor with the given test variables, and fulfill
+    // with a result indicating the results of running the exercisor.
     const runExercisor = (testVariables) => {
         if (when) {
-            try {
-                const rawValue = when.exercisor(testVariables);
-                if (rawValue && isFunction(rawValue.then)) {
-                    return Promise.resolve(rawValue)
-                        .then((value) => ({
-                            value,
-                            promised: true,
-                            succeeded: true,
-                            threw: false,
-                            rejected: false
-                        }))
-                        .catch((error) => ({
-                            error,
-                            succeeded: false,
-                            threw: false,
-                            rejected: true
-                        }));
-                }
-                else {
-                    return Promise.resolve({
-                        value: rawValue,
-                        promised: false,
-                        succeeded: true,
-                        threw: false,
-                        rejected: false
-                    });
-                }
-            }
-            catch (error) {
-                return Promise.resolve({
-                    succeeded: false,
-                    threw: true,
-                    rejected: false,
-                    error
-                });
-            }
+            return when.run(testVariables);
         }
         else {
             return Promise.resolve();
@@ -164,25 +189,32 @@ function TestCase(description, subject, spec) {
         return chainPromises(givens.map((given) => given.cleanup.bind(given)).reverse());
     };
 
+    const exerciseAndInspect = (testVariables) => {
+        return runExercisor(testVariables)
+            .then((result) => runInspectors(result, testVariables));
+    };
+
+    const cleanupAndGetResults = (testResult) => {
+        // XXX: FIXME: rollup results from everything.
+        return runCleanup()
+            .then((Ho.returns(testResult)))
+            .catch(getFailingTestResult);
+    };
+
+    // A promise to define the test case by running the spec.
+    // Note that definition is done unconditionally.
+    const promiseToDefine = Promise.method(spec)(api, subject);
+
+    const getPassingTestResult = () => ({passed: true});
+    const getFailingTestResult = (error) => ({error, passed: false});
+
     this.run = () => {
         return promiseToDefine
             .then(runSetup)
-            .then((testVariables) => {
-                return runExercisor(testVariables)
-                    .then((result) => runInspectors(result, testVariables));
-            })
-            .then(() => ({passed: true}))
-            .catch((error) => {
-                return {passed: false, error};
-            })
-            .then((testResult) => {
-                return runCleanup()
-                    .then(() => testResult)
-                    .catch((error) => {
-                        // XXX: FIXME: rollup results from everything.
-                        return {passed: false, error};
-                    });
-            });
+            .then(exerciseAndInspect)
+            .then(getPassingTestResult)
+            .catch(getFailingTestResult)
+            .then(cleanupAndGetResults);
     };
 }
 

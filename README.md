@@ -98,9 +98,13 @@ Returns an object with a single method, `taken(cleanup)`, used for cleanup/teard
 This method is passed a cleanup function which is called after a test case
 is evaluated, regardless of whether the test passed, failed, or erred. The cleanup
 function is invoked with an object containing the test variables as were defined
-at the time the corresponding setup function completed. If subsequent setups
+at the time the corresponding setup function _completed_. If subsequent setups
 _replaced_ the value of a test variable, the replacements will be rolled back
 by the time then corresponding cleanup function is called.
+
+The provided `cleanup` function will _not_ be called if the corresponding `setup`
+fails (errs). This is _not_ meant as a `catch` handler for your setup function, it's
+meant as a cleanup function to undo a successful cleanup.
 
 As a **best practice**, you should avoid mutation of test variables: subsequent
 setup functions can result in _replacement_ of test variables, but should not mutate
