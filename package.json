@@ -67,6 +67,7 @@
     "stryker-mocha-runner": "0.2.0"
   },
   "dependencies": {
+    "bluebird": "3.5.0",
     "lodash.isfunction": "3.0.8"
   }
 }
