@@ -17,7 +17,7 @@ function itShouldPass (when, testDescriptor) {
 
 function itShouldFail (when, testDescriptor) {
   it(`should fail ${when}`, () => {
-    return expect(jsTestFramework.test(testDescriptor)).to.be.rejected
+    return expect(jsTestFramework.test(testDescriptor)).to.be.rejectedWith(jsTestFramework.TestFailure)
   })
 }
 
@@ -33,52 +33,41 @@ const FAILING_ASSERTION = ERROR_THROWING_ASSERTION
 
 describe('some example test specs', () => {
   describe('basic assertion rules', () => {
-    itShouldPass('if the assertion function is a noop', ({that}) => {
-      that(NOOP)
+    itShouldPass('if the assertion function is a noop', ({verify}) => {
+      verify(NOOP)
     })
 
-    itShouldFail('if the assertion function throws an error', ({that}) => {
-      that(ERROR_THROWING_ASSERTION)
+    itShouldFail('if the assertion function throws an error', ({verify}) => {
+      verify(ERROR_THROWING_ASSERTION)
     })
 
-    itShouldFail('if the assertion function includes a failed chai expectation', ({that}) => {
-      that(() => expect(1).to.equal(0))
+    itShouldFail('if the assertion function includes a failed chai expectation', ({verify}) => {
+      verify(() => expect(1).to.equal(0))
     })
 
-    itShouldFail('if the assertion function returns a promise that rejects', ({that}) => {
-      that(() => Promise.reject(new Error('test-error')))
+    itShouldFail('if the assertion function returns a promise that rejects', ({verify}) => {
+      verify(() => Promise.reject(new Error('test-error')))
     })
 
-    itShouldPass('if two chained assertions pass', ({that}) => {
-      that(PASSING_ASSERTION)
-        .and.that(PASSING_ASSERTION)
+    itShouldPass('if two assertions pass', ({verify}) => {
+      verify(PASSING_ASSERTION)
+      verify(PASSING_ASSERTION)
     })
 
-    itShouldPass('if two chained assertions pass, using "and" as a method', ({that}) => {
-      that(PASSING_ASSERTION).and(PASSING_ASSERTION)
+    itShouldFail('if the first assertions fails', ({verify}) => {
+      verify(FAILING_ASSERTION)
+      verify(PASSING_ASSERTION)
     })
 
-    itShouldFail('if the second chained assertion fails', ({that}) => {
-      that(PASSING_ASSERTION).and.that(FAILING_ASSERTION)
+    itShouldFail('if the second assertions fails', ({verify}) => {
+      verify(PASSING_ASSERTION)
+      verify(FAILING_ASSERTION)
     })
+  })
 
-    itShouldFail('if the first chained assertion fails', ({that}) => {
-      that(FAILING_ASSERTION).and.that(PASSING_ASSERTION)
-    })
-
-    itShouldPass('if two unchained assertions pass', ({that}) => {
-      that(PASSING_ASSERTION)
-      that(PASSING_ASSERTION)
-    })
-
-    itShouldFail('if the first unchained assertions fails', ({that}) => {
-      that(FAILING_ASSERTION)
-      that(PASSING_ASSERTION)
-    })
-
-    itShouldFail('if the second unchained assertions fails', ({that}) => {
-      that(PASSING_ASSERTION)
-      that(FAILING_ASSERTION)
+  describe('The exercise stage', () => {
+    itShouldFail('when the exerciser throws an exception', ({exercise}) => {
+      exercise(() => { throw new Error('test-error') })
     })
   })
 })
